@@ -1,8 +1,8 @@
-# s3fs-fuse fork with wolfSSL and Mbed TLS support
+# s3fs-fuse fork with wolfSSL and MbedTLS support
 
-This repository contains a personal fork of `s3fs-fuse` with:
+This repository contains a fork of `s3fs-fuse` more suitable for embedded devices by adding support for the wolfSSL and MbedTLS libraries. The default OpenSSL library is often too large for such constrained devices and these two alternatives are quite popular, specially in OpenWRT and similar environments. This extension of the original functionality has been done 
 
-- internal crypto backend abstraction
+- Adding an internal crypto backend abstraction
 - wolfSSL backend support
 - Mbed TLS backend support
 - OpenWrt-oriented packaging work maintained separately
