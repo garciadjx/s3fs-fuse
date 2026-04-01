@@ -24,7 +24,7 @@
 
 #include "common.h"
 #include "s3fs_help.h"
-#include "s3fs_auth.h"
+#include "s3fs_crypto.h"
 
 //-------------------------------------------------------------------
 // Contents

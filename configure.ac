@@ -19,9 +19,9 @@
 ######################################################################
 dnl Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.69])
+AC_PREREQ([2.71])
 AC_INIT([s3fs],[1.97])
-AC_CONFIG_HEADER([config.h])
+AC_CONFIG_HEADERS([config.h])
 
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE([foreign])
@@ -78,6 +78,54 @@ dnl ----------------------------------------------
 auth_lib=na
 nettle_lib=no
 use_openssl_30=no
+wolfssl_lib=no
+mbedtls_lib=no
+
+dnl
+dnl wolfSSL library
+dnl
+AC_MSG_CHECKING([s3fs build with wolfSSL])
+AC_ARG_WITH(
+  wolfssl,
+  [AS_HELP_STRING([--with-wolfssl], [s3fs build with wolfSSL (default is no)])],
+  [
+    case "${withval}" in
+      yes)
+        AC_MSG_RESULT(yes)
+        AS_IF([test $auth_lib = na], [auth_lib=wolfssl],
+              [AC_MSG_ERROR([could not set wolfssl because another ssl library is already set])])
+        ;;
+      *)
+        AC_MSG_RESULT(no)
+        ;;
+    esac
+  ],
+  [AC_MSG_RESULT(no)]
+)
+
+
+dnl
+dnl MbedTLS library
+dnl
+AC_MSG_CHECKING([s3fs build with MbedTLS])
+AC_ARG_WITH(
+  mbedtls,
+  [AS_HELP_STRING([--with-mbedtls], [s3fs build with MbedTLS (default is no)])],
+  [
+    case "${withval}" in
+      yes)
+        AC_MSG_RESULT(yes)
+        AS_IF([test $auth_lib = na], [auth_lib=mbedtls],
+              [AC_MSG_ERROR([could not set mbedtls because another ssl library is already set])])
+        ;;
+      *)
+        AC_MSG_RESULT(no)
+        ;;
+    esac
+  ],
+  [AC_MSG_RESULT(no)]
+)
+
 
 dnl
 dnl nettle library
@@ -201,11 +249,29 @@ dnl
 
 AC_MSG_CHECKING([compile s3fs with])
 case "${auth_lib}" in
+
+wolfssl)
+  AC_MSG_RESULT(wolfSSL)
+  PKG_CHECK_MODULES([DEPS], [fuse3 >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.6 wolfssl])
+  ;;
+mbedtls)
+  AC_MSG_RESULT(mbedTLS)
+
+  PKG_CHECK_MODULES([DEPS], [fuse3 >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.6])
+
+  AC_CHECK_HEADERS([mbedtls/md.h mbedtls/error.h],
+                   [],
+                   [AC_MSG_ERROR([mbedTLS headers not found])])
+
+  AC_CHECK_LIB([mbedcrypto], [mbedtls_md_info_from_type],
+               [DEPS_LIBS="$DEPS_LIBS -lmbedcrypto"],
+               [AC_MSG_ERROR([libmbedcrypto not found or missing required digest API])])
+  ;;
 openssl)
   AC_MSG_RESULT(OpenSSL)
   AS_IF([test "$found_fuse_t" = "yes"],
-    [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libcurl >= 7.0 libxml-2.0 >= 2.6 libcrypto >= 0.9 ])],
-    [PKG_CHECK_MODULES([DEPS], [fuse3 >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.6 libcrypto >= 0.9 ])])
+    [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libcurl >= 7.0 libxml-2.0 >= 2.9 libcrypto >= 0.9 ])],
+    [PKG_CHECK_MODULES([DEPS], [fuse3 >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.9 libcrypto >= 0.9 ])])
 
   AC_MSG_CHECKING([openssl 3.0 or later])
   AC_COMPILE_IFELSE(
@@ -224,8 +290,8 @@ gnutls)
   AS_IF([test $gnutls_nettle = 0],
     [
       AS_IF([test "$found_fuse_t" = "yes"],
-        [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libcurl >= 7.0 libxml-2.0 >= 2.6 gnutls >= 2.12.0 ])],
-        [PKG_CHECK_MODULES([DEPS], [fuse3 >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.6 gnutls >= 2.12.0 ])])
+        [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libcurl >= 7.0 libxml-2.0 >= 2.9 gnutls >= 2.12.0 ])],
+        [PKG_CHECK_MODULES([DEPS], [fuse3 >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.9 gnutls >= 2.12.0 ])])
       LIBS="-lgnutls -lgcrypt $LIBS"
       AC_MSG_CHECKING([gnutls is build with])
       AC_MSG_RESULT(gcrypt)
@@ -240,8 +306,8 @@ nettle)
   AS_IF([test $gnutls_nettle = 1],
     [
       AS_IF([test "$found_fuse_t" = "yes"],
-        [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libcurl >= 7.0 libxml-2.0 >= 2.6 nettle >= 2.7.1 ])],
-        [PKG_CHECK_MODULES([DEPS], [fuse3 >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.6 nettle >= 2.7.1 ])])
+        [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libcurl >= 7.0 libxml-2.0 >= 2.9 nettle >= 2.7.1 ])],
+        [PKG_CHECK_MODULES([DEPS], [fuse3 >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.9 nettle >= 2.7.1 ])])
       LIBS="-lgnutls -lnettle $LIBS"
       AC_MSG_CHECKING([gnutls is build with])
       AC_MSG_RESULT(nettle)
@@ -251,14 +317,16 @@ nettle)
 nss)
   AC_MSG_RESULT(NSS)
   AS_IF([test "$found_fuse_t" = "yes"],
-        [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libcurl >= 7.0 libxml-2.0 >= 2.6 nss >= 3.15.0 ])],
-        [PKG_CHECK_MODULES([DEPS], [fuse3 >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.6 nss >= 3.15.0 ])])
+        [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libcurl >= 7.0 libxml-2.0 >= 2.9 nss >= 3.15.0 ])],
+        [PKG_CHECK_MODULES([DEPS], [fuse3 >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.9 nss >= 3.15.0 ])])
   ;;
 *)
   AC_MSG_ERROR([unknown ssl library type.])
   ;;
 esac
 
+AM_CONDITIONAL([USE_SSL_WOLFSSL], [test "$auth_lib" = wolfssl])
+AM_CONDITIONAL([USE_SSL_MBEDTLS], [test "$auth_lib" = mbedtls])
 AM_CONDITIONAL([USE_SSL_OPENSSL], [test "$auth_lib" = openssl])
 AM_CONDITIONAL([USE_SSL_OPENSSL_30], [test "$use_openssl_30" = yes])
 AM_CONDITIONAL([USE_SSL_GNUTLS], [test "$auth_lib" = gnutls -o "$auth_lib" = nettle])

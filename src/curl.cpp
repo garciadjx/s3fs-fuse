@@ -36,7 +36,7 @@
 #include "curl.h"
 #include "curl_share.h"
 #include "curl_util.h"
-#include "s3fs_auth.h"
+#include "s3fs_crypto.h"
 #include "s3fs_cred.h"
 #include "s3fs_util.h"
 #include "string_util.h"

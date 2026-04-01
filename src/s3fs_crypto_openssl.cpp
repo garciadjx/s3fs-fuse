@@ -1,23 +1,3 @@
-/*
- * s3fs - FUSE-based file system backed by Amazon S3
- *
- * Copyright(C) 2007 Randy Rizun <rrizun@gmail.com>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- */
-
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
@@ -36,8 +16,9 @@
 #include <openssl/err.h>
 #include <thread>
 
-#include "s3fs_auth.h"
+#include "s3fs_crypto.h"
 #include "s3fs_logger.h"
+
 
 //-------------------------------------------------------------------
 // Utility Function for version
@@ -52,7 +33,7 @@ const char* s3fs_crypt_lib_name()
 //-------------------------------------------------------------------
 // Utility Function for global init
 //-------------------------------------------------------------------
-bool s3fs_init_global_ssl()
+bool s3fs_init_global_ssl() 
 {
     ERR_load_crypto_strings();
 
@@ -63,16 +44,18 @@ bool s3fs_init_global_ssl()
     ERR_load_BIO_strings();
     #endif
 
+    // TODO: This enables deprecated algorithms like MD5 -- perhaps use a narrower enablement?
     OpenSSL_add_all_algorithms();
     return true;
 }
 
-bool s3fs_destroy_global_ssl()
+bool s3fs_destroy_global_ssl() 
 {
     EVP_cleanup();
     ERR_free_strings();
     return true;
 }
+
 
 //-------------------------------------------------------------------
 // Utility Function for crypt lock
@@ -169,6 +152,7 @@ bool s3fs_destroy_crypt_mutex()
     return true;
 }
 
+
 //-------------------------------------------------------------------
 // Utility Function for HMAC
 //-------------------------------------------------------------------
@@ -198,7 +182,7 @@ std::unique_ptr<unsigned char[]> s3fs_HMAC256(const void* key, size_t keylen, co
     return s3fs_HMAC_RAW(key, keylen, data, datalen, digestlen, true);
 }
 
-#ifdef USE_OPENSSL_30
+
 //-------------------------------------------------------------------
 // Utility Function for MD5 (OpenSSL >= 3.0)
 //-------------------------------------------------------------------
@@ -211,12 +195,20 @@ bool s3fs_md5(const unsigned char* data, size_t datalen, md5_t* digest)
 {
     auto digestlen = static_cast<unsigned int>(digest->size());
 
-    const EVP_MD* md    = EVP_get_digestbyname("md5");
-    EVP_MD_CTX*   mdctx = EVP_MD_CTX_create();
-    EVP_DigestInit_ex(mdctx, md, nullptr);
-    EVP_DigestUpdate(mdctx, data, datalen);
-    EVP_DigestFinal_ex(mdctx, digest->data(), &digestlen);
-    EVP_MD_CTX_destroy(mdctx);
+    std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> mdctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+    if(mdctx == nullptr){
+        S3FS_PRN_ERR("EVP_MD_CTX_new failed\n");
+        return false;
+    }
+    if(EVP_DigestInit_ex(mdctx.get(), EVP_md5(), nullptr) != 1){
+        S3FS_PRN_ERR("EVP_DigestInit_ex failed\n");
+        return false;
+    }
+    if(EVP_DigestUpdate(mdctx.get(), data, datalen) != 1 ||
+        EVP_DigestFinal_ex(mdctx.get(), digest->data(), &digestlen) != 1){
+        S3FS_PRN_ERR("Digest computation failed\n");
+        return false;
+    }
 
     return true;
 }
@@ -236,7 +228,14 @@ bool s3fs_md5_fd(int fd, off_t start, off_t size, md5_t* result)
 
     // instead of MD5_Init
     std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> mdctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
-    EVP_DigestInit_ex(mdctx.get(), EVP_md5(), nullptr);
+    if(!mdctx){
+        S3FS_PRN_ERR("EVP_MD_CTX_new failed\n");
+        return false;
+    }
+    if(EVP_DigestInit_ex(mdctx.get(), EVP_md5(), nullptr) != 1){
+        S3FS_PRN_ERR("EVP_DigestInit_ex failed\n");
+        return false;
+    }
 
     for(off_t total = 0; total < size; total += bytes){
         std::array<char, 512> buf;
@@ -251,74 +250,21 @@ bool s3fs_md5_fd(int fd, off_t start, off_t size, md5_t* result)
             return false;
         }
         // instead of MD5_Update
-        EVP_DigestUpdate(mdctx.get(), buf.data(), bytes);
+        if(EVP_DigestUpdate(mdctx.get(), buf.data(), bytes) != 1){
+            S3FS_PRN_ERR("Digest computation failed\n");
+            return false;
+        }
     }
 
     // instead of MD5_Final
-    EVP_DigestFinal_ex(mdctx.get(), result->data(), &md5_digest_len);
-
-    return true;
-}
-
-#else
-//-------------------------------------------------------------------
-// Utility Function for MD5 (OpenSSL < 3.0)
-//-------------------------------------------------------------------
-
-// TODO: Does this fail on OpenSSL < 3.0 and we need to use MD5_CTX functions?
-bool s3fs_md5(const unsigned char* data, size_t datalen, md5_t* digest)
-{
-    unsigned int digestlen = digest->size();
-
-    const EVP_MD* md    = EVP_get_digestbyname("md5");
-    EVP_MD_CTX*   mdctx = EVP_MD_CTX_create();
-    EVP_DigestInit_ex(mdctx, md, nullptr);
-    EVP_DigestUpdate(mdctx, data, datalen);
-    EVP_DigestFinal_ex(mdctx, digest->data(), &digestlen);
-    EVP_MD_CTX_destroy(mdctx);
-
-    return true;
-}
-
-bool s3fs_md5_fd(int fd, off_t start, off_t size, md5_t* result)
-{
-    MD5_CTX md5ctx;
-    off_t   bytes;
-
-    if(-1 == size){
-        struct stat st;
-        if(-1 == fstat(fd, &st)){
-            return false;
-        }
-        size = st.st_size;
+    if(EVP_DigestFinal_ex(mdctx.get(), result->data(), &md5_digest_len) != 1){
+        S3FS_PRN_ERR("Digest computation failed\n");
+        return false;
     }
 
-    MD5_Init(&md5ctx);
-
-    for(off_t total = 0; total < size; total += bytes){
-        std::array<char, 512> buf;
-        bytes = std::min(static_cast<off_t>(buf.size()), (size - total));
-        bytes = pread(fd, buf.data(), bytes, start + total);
-        if(0 == bytes){
-            // end of file
-            break;
-        }else if(-1 == bytes){
-            // error
-            S3FS_PRN_ERR("file read error(%d)", errno);
-            return false;
-        }
-        MD5_Update(&md5ctx, buf.data(), bytes);
-    }
-
-    MD5_Final(result->data(), &md5ctx);
-
     return true;
 }
-#endif
 
-//-------------------------------------------------------------------
-// Utility Function for SHA256
-//-------------------------------------------------------------------
 bool s3fs_sha256(const unsigned char* data, size_t datalen, sha256_t* digest)
 {
     const EVP_MD* md    = EVP_get_digestbyname("sha256");
@@ -373,12 +319,3 @@ bool s3fs_sha256_fd(int fd, off_t start, off_t size, sha256_t* result)
 
     return true;
 }
-
-/*
-* Local variables:
-* tab-width: 4
-* c-basic-offset: 4
-* End:
-* vim600: expandtab sw=4 ts=4 fdm=marker
-* vim<600: expandtab sw=4 ts=4
-*/

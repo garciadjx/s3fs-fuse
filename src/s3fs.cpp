@@ -49,7 +49,7 @@
 #include "sighandlers.h"
 #include "s3fs_xml.h"
 #include "string_util.h"
-#include "s3fs_auth.h"
+#include "s3fs_crypto.h"
 #include "s3fs_cred.h"
 #include "s3fs_help.h"
 #include "s3fs_util.h"

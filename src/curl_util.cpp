@@ -27,7 +27,7 @@
 #include "s3fs_logger.h"
 #include "curl_util.h"
 #include "string_util.h"
-#include "s3fs_auth.h"
+#include "s3fs_crypto.h"
 #include "s3fs_cred.h"
 
 using namespace std::string_literals;

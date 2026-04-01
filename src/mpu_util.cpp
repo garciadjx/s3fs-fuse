@@ -26,7 +26,7 @@
 #include "mpu_util.h"
 #include "curl.h"
 #include "s3fs_xml.h"
-#include "s3fs_auth.h"
+#include "s3fs_crypto.h"
 #include "string_util.h"
 #include "s3fs_threadreqs.h"
 

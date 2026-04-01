@@ -20,7 +20,7 @@
 
 #include <string>
 
-#include "s3fs_auth.h"
+#include "s3fs_crypto.h"
 #include "string_util.h"
 
 //-------------------------------------------------------------------

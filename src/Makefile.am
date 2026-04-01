@@ -59,8 +59,14 @@ s3fs_SOURCES = \
     threadpoolman.cpp \
     syncfiller.cpp \
     common_auth.cpp
+if USE_SSL_WOLFSSL
+    s3fs_SOURCES += s3fs_crypto_wolfssl.cpp
+endif
+if USE_SSL_MBEDTLS
+    s3fs_SOURCES += s3fs_crypto_mbedtls.cpp
+endif
 if USE_SSL_OPENSSL
-    s3fs_SOURCES += openssl_auth.cpp
+    s3fs_SOURCES += s3fs_crypto_openssl.cpp
 endif
 if USE_SSL_GNUTLS
     s3fs_SOURCES += gnutls_auth.cpp
@@ -77,8 +83,14 @@ noinst_PROGRAMS = \
     test_string_util
 
 test_curl_util_SOURCES = common_auth.cpp curl_util.cpp string_util.cpp test_curl_util.cpp s3fs_global.cpp s3fs_logger.cpp
+if USE_SSL_WOLFSSL
+    test_curl_util_SOURCES += s3fs_crypto_wolfssl.cpp
+endif
+if USE_SSL_MBEDTLS
+    test_curl_util_SOURCES += s3fs_crypto_mbedtls.cpp
+endif
 if USE_SSL_OPENSSL
-    test_curl_util_SOURCES += openssl_auth.cpp
+    test_curl_util_SOURCES += s3fs_crypto_openssl.cpp
 endif
 if USE_SSL_GNUTLS
     test_curl_util_SOURCES += gnutls_auth.cpp
